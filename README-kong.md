@@ -1,0 +1,2 @@
+在项目根目录执行pip install -e .指令，将当前文件代码中引用的ultralytics链接挂载到本地源代码而不是官方ultralytics库中，这样可以使得自己在源代码修改的内容生效
+
