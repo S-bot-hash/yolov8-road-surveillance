@@ -206,3 +206,11 @@ results.csv
 
 # CI test asset cache
 .ultralytics_cache/
+
+# 绝对禁止 Git 碰我本地实际的数据集文件夹
+data/
+
+# 绝对禁止 Git 碰我训练生成的权重文件和图表
+runs/
+*.pt
+*.pth

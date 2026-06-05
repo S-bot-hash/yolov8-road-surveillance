@@ -2071,3 +2071,29 @@ class RealNVP(nn.Module):
             self.float()
         z, log_det = self.backward_p(x)
         return self.prior.log_prob(z) + log_det
+
+class GhostC2f(nn.Module):
+    #更快的实现csp Bottleneck（两个卷积层和Ghostbottleneck）
+    def __init__(self,c1:int,c2:int,n:int = 1,shortcut: bool = False,g:int = 1,e:float = 0.5):
+        super().__init__()
+        self.c=int(c2*e);#隐藏层通道数
+        self.cv1=Conv(c1,2*self.c,1,1)
+        self.cv2=Conv((2+n)*self.c,c2,1)
+
+        #将原版的bottleneck换成ghostbottleneck
+        self.m=nn.ModuleList(GhostBottleneck(self.c,self.c,k=3,s=1) for _ in range(n))
+
+    def forward(self,x:torch.Tensor)-> torch.Tensor:
+        """Forward pass through the GhostC2f"""
+        y=list(self.cv1(x).chunk(2,1))
+        y.extend(m(y[-1]) for m in self.m)
+        return self.cv2(torch.cat(y,1))
+
+    def forward_split(self,x:torch.Tensor)->torch.Tensor:
+        """Forward pass using split() instead of split()."""
+        y=self.cv1(x).split((self.c,self.c),1)
+        y=[y[0],y[1]]
+        y.extend(m(y[-1]) for m in self.m)
+        return self.cv2(torch.cat(y,1))
+
+#class GhostC2f_Full(nn.mudule):
