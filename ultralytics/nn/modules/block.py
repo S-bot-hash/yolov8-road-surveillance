@@ -2097,3 +2097,33 @@ class GhostC2f(nn.Module):
         return self.cv2(torch.cat(y,1))
 
 #class GhostC2f_Full(nn.mudule):
+
+class SEAttention(nn.Module):
+    """Squeeze-and-Excitation Attention Module"""
+
+    def __init__(self,c1,c2=None,r=16):
+        """
+        Initialize SE Module.
+        Args:
+            c1(int):input channels
+            c2(int):output channels
+            r(int) :reduction ratio
+        """
+        super().__init__()
+        #squeeze the space to 1×1
+        self.squeeze=nn.AdaptiveAvgPool2d(1)
+
+        #Excitation: channel dimension reduction and then increase,
+        #improve channel correlation
+
+        c_=max(1,c1//r)
+        self.excitation=nn.Sequential(
+            nn.Conv2d(c1,c_,1,bias=False),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(c_,c1,1,bias=False),
+            nn.Sigmoid()
+        )
+    def forward(self,x:torch.Tensor)-> torch.Tensor:
+        """Apply Squeeze-and-Excitation to input tensor"""
+        return x*self.excitation(self.squeeze(x))
+

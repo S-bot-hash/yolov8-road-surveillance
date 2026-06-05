@@ -60,6 +60,7 @@ from .block import (
     SCDown,
     TorchVision,
     GhostC2f, #将新模块暴露给框架
+    SEAttention,
 )
 from .conv import (
     CBAM,
@@ -191,4 +192,5 @@ __all__ = (
     "YOLOESegment26",
     "v10Detect",
     "GhostC2f",
+    "SEAttention",
 )
