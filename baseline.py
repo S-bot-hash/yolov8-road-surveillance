@@ -10,6 +10,8 @@ if __name__ =='__main__':
 #启动nano的缩放因子：属于yolov8n的depth_factor和width_factor
     model=YOLO('yolov8n.yaml')
 
+    model.load("yolov8n.pt")
+
 #启动基线模型开始训练
 
     model.train(
@@ -20,7 +22,7 @@ if __name__ =='__main__':
         workers=4,#多线程并行读取图片
         device=0,#代表调用电脑里的第一块英伟达显卡
         project='runs/detect',#结果保存的总主目录
-        name='v8n_baseline',#本次基线训练结果的子文件夹名字
+        name='v8n_baseline-bbox',#本次基线训练结果的子文件夹名字
         exist_ok=True #如果文件夹已经存在，直接覆盖
 
     )

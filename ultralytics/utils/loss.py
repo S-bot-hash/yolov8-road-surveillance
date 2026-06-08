@@ -15,7 +15,7 @@ from ultralytics.utils.ops import crop_mask, xywh2xyxy, xyxy2xywh
 from ultralytics.utils.tal import RotatedTaskAlignedAssigner, TaskAlignedAssigner, dist2bbox, dist2rbox, make_anchors
 from ultralytics.utils.torch_utils import autocast
 
-from .metrics import bbox_iou, probiou
+from .metrics import bbox_iou, probiou,bbox_nwd,bbox_iou_inner
 from .tal import bbox2dist, rbox2dist
 
 
@@ -132,6 +132,8 @@ class BboxLoss(nn.Module):
         iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
         loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
 
+
+
         # DFL loss
         if self.dfl_loss:
             target_ltrb = bbox2dist(anchor_points, target_bboxes, self.dfl_loss.reg_max - 1)
@@ -153,6 +155,76 @@ class BboxLoss(nn.Module):
 
         return loss_iou, loss_dfl
 
+
+class InnerBboxLoss(nn.Module):
+    """Criterion class for computing training losses for bounding boxes with Geometry-Aware Inner-IoU."""
+
+    def __init__(self, reg_max: int = 16):
+        """Initialize the BboxLoss module with regularization maximum and DFL settings."""
+        super().__init__()
+        self.dfl_loss = DFLoss(reg_max) if reg_max > 1 else None
+
+    def forward(
+            self,
+            pred_dist: torch.Tensor,
+            pred_bboxes: torch.Tensor,
+            anchor_points: torch.Tensor,
+            target_bboxes: torch.Tensor,
+            target_scores: torch.Tensor,
+            target_scores_sum: torch.Tensor,
+            fg_mask: torch.Tensor,
+            imgsz: torch.Tensor,
+            stride: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Compute Geometry-Aware Inner-IoU and DFL losses for bounding boxes."""
+        weight = target_scores.sum(-1)[fg_mask].unsqueeze(-1)
+
+        # ======== 核心创新：几何自适应比例 (Geometry-Aware Ratio) ========
+        tb = target_bboxes[fg_mask]  # 提取当前 Batch 中的真实框 (x1, y1, x2, y2)
+        w = tb[:, 2] - tb[:, 0] + 1e-7
+        h = tb[:, 3] - tb[:, 1] + 1e-7
+
+        # 1. 计算最大长宽比 (Aspect Ratio)
+        ar = torch.max(w / h, h / w)
+
+        # 2. 定义自适应平滑函数的超参数阈值
+        # 轿车等常规目标长宽比通常在 1.0~1.5 之间，公交车/皮卡侧面通常 > 2.5
+        lower_ar, upper_ar = 1.5, 3.0
+        base_ratio, max_ratio = 0.75, 1.0
+
+        # 3. 线性插值与截断：将长宽比映射到 [0.75, 1.0] 的 ratio 空间
+        alpha = ((ar - lower_ar) / (upper_ar - lower_ar)).clamp(0, 1)
+        inner_ratios = base_ratio + alpha * (max_ratio - base_ratio)
+
+        # 确保维度对齐为 (N, 1)，以便在 metrics.py 中进行广播乘法
+        inner_ratios = inner_ratios.view(-1, 1)
+        # ================================================================
+
+        # 将计算出的自适应张量 inner_ratios 传入底层的 bbox_iou_inner
+        iou = bbox_iou_inner(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True,
+                             inner_ratio=inner_ratios)
+        loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
+
+        # DFL loss (保持原样)
+        if self.dfl_loss:
+            target_ltrb = bbox2dist(anchor_points, target_bboxes, self.dfl_loss.reg_max - 1)
+            loss_dfl = self.dfl_loss(pred_dist[fg_mask].view(-1, self.dfl_loss.reg_max), target_ltrb[fg_mask]) * weight
+            loss_dfl = loss_dfl.sum() / target_scores_sum
+        else:
+            target_ltrb = bbox2dist(anchor_points, target_bboxes)
+            target_ltrb = target_ltrb * stride
+            target_ltrb[..., 0::2] /= imgsz[1]
+            target_ltrb[..., 1::2] /= imgsz[0]
+            pred_dist = pred_dist * stride
+            pred_dist[..., 0::2] /= imgsz[1]
+            pred_dist[..., 1::2] /= imgsz[0]
+            loss_dfl = (
+                    F.l1_loss(pred_dist[fg_mask], target_ltrb[fg_mask], reduction="none").mean(-1,
+                                                                                               keepdim=True) * weight
+            )
+            loss_dfl = loss_dfl.sum() / target_scores_sum
+
+        return loss_iou, loss_dfl
 
 class RLELoss(nn.Module):
     """Residual Log-Likelihood Estimation Loss.
@@ -342,7 +414,9 @@ class v8DetectionLoss:
         h = model.args  # hyperparameters
 
         m = model.model[-1]  # Detect() module
+
         self.bce = nn.BCEWithLogitsLoss(reduction="none")
+
         self.hyp = h
         self.stride = m.stride  # model strides
         self.nc = m.nc  # number of classes
@@ -366,6 +440,8 @@ class v8DetectionLoss:
             topk2=tal_topk2,
         )
         self.bbox_loss = BboxLoss(m.reg_max).to(device)
+        # """消融实验6：使用inner_iou"""
+        # self.bbox_loss = InnerBboxLoss(m.reg_max).to(device)
         self.proj = torch.arange(m.reg_max, dtype=torch.float, device=device)
 
     def preprocess(self, targets: torch.Tensor, batch_size: int, scale_tensor: torch.Tensor) -> torch.Tensor:

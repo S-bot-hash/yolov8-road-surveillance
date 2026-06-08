@@ -171,6 +171,76 @@ def bbox_iou(
     return iou  # IoU
 
 
+def bbox_iou_inner(box1, box2, xywh=False, GIoU=False, DIoU=False, CIoU=False, eps=1e-7, inner_ratio=0.75):
+    """
+    专门为 Inner-IoU 编写的计算函数。
+    通过 inner_ratio 缩放边界框以聚焦内部区域。
+    """
+    # 1. 获取并解耦原始坐标
+    if xywh:
+        (x1, y1, w, h), (x2, y2, w_, h_) = box1.chunk(4, -1), box2.chunk(4, -1)
+        w1_, h1_, w2_, h2_ = w / 2, h / 2, w_ / 2, h_ / 2
+        b1_x1, b1_x2, b1_y1, b1_y2 = x1 - w1_, x1 + w1_, y1 - h1_, y1 + h1_
+        b2_x1, b2_x2, b2_y1, b2_y2 = x2 - w2_, x2 + w2_, y2 - h2_, y2 + h2_
+    else:
+        b1_x1, b1_y1, b1_x2, b1_y2 = box1.chunk(4, -1)
+        b2_x1, b2_y1, b2_x2, b2_y2 = box2.chunk(4, -1)
+
+    is_tensor=isinstance(inner_ratio,torch.Tensor)
+
+
+    # 2. Inner 缩放逻辑
+    if is_tensor or inner_ratio != 1.0:
+        if is_tensor:
+            inner_ratio=inner_ratio.view(-1,1)
+        b1_w, b1_h = b1_x2 - b1_x1, b1_y2 - b1_y1
+        b1_xc, b1_yc = b1_x1 + b1_w / 2, b1_y1 + b1_h / 2
+
+        b2_w, b2_h = b2_x2 - b2_x1, b2_y2 - b2_y1
+        b2_xc, b2_yc = b2_x1 + b2_w / 2, b2_y1 + b2_h / 2
+
+        b1_x1 = b1_xc - b1_w * inner_ratio / 2
+        b1_y1 = b1_yc - b1_h * inner_ratio / 2
+        b1_x2 = b1_xc + b1_w * inner_ratio / 2
+        b1_y2 = b1_yc + b1_h * inner_ratio / 2
+
+        b2_x1 = b2_xc - b2_w * inner_ratio / 2
+        b2_y1 = b2_yc - b2_h * inner_ratio / 2
+        b2_x2 = b2_xc + b2_w * inner_ratio / 2
+        b2_y2 = b2_yc + b2_h * inner_ratio / 2
+
+    # 3. 重新计算用于后续交并比和 CIoU 计算的宽和高 (修复 w1, h1 未绑定的问题)
+    w1, h1 = b1_x2 - b1_x1, b1_y2 - b1_y1 + eps
+    w2, h2 = b2_x2 - b2_x1, b2_y2 - b2_y1 + eps
+
+    # 4. 计算交集和并集
+    inter = (b1_x2.minimum(b2_x2) - b1_x1.maximum(b2_x1)).clamp_(0) * (
+        b1_y2.minimum(b2_y2) - b1_y1.maximum(b2_y1)
+    ).clamp_(0)
+
+    union = w1 * h1 + w2 * h2 - inter + eps
+
+    # 5. 计算 IoU 及各项距离惩罚
+    iou = inter / union
+    if CIoU or DIoU or GIoU:
+        cw = b1_x2.maximum(b2_x2) - b1_x1.minimum(b2_x1)  # convex width
+        ch = b1_y2.maximum(b2_y2) - b1_y1.minimum(b2_y1)  # convex height
+        if CIoU or DIoU:
+            c2 = cw.pow(2) + ch.pow(2) + eps
+            rho2 = (
+                (b2_x1 + b2_x2 - b1_x1 - b1_x2).pow(2) + (b2_y1 + b2_y2 - b1_y1 - b1_y2).pow(2)
+            ) / 4
+            if CIoU:
+                v = (4 / math.pi**2) * ((w2 / h2).atan() - (w1 / h1).atan()).pow(2)
+                with torch.no_grad():
+                    alpha = v / (v - iou + (1 + eps))
+                return iou - (rho2 / c2 + v * alpha)  # CIoU
+            return iou - rho2 / c2  # DIoU
+        c_area = cw * ch + eps
+        return iou - (c_area - union) / c_area  # GIoU
+    return iou  # IoU
+
+
 def mask_iou(mask1: torch.Tensor, mask2: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
     """Calculate masks IoU.
 
@@ -1888,3 +1958,36 @@ class SemanticMetrics(SimpleClass, DataExportMixin):
             }
             for i in range(len(per_class))
         ]
+
+
+def bbox_nwd(box1, box2, eps=1e-7, constant=12.8):
+    """
+    计算两个边界框的 Normalized Wasserstein Distance (NWD)。
+    专为微小目标设计，替代 IoU。
+    box1, box2: 形状为 (..., 4) 的张量，格式为 (x1, y1, x2, y2)
+    constant: NWD 的平滑常数，通常设为数据集中目标平均尺寸的倍数（12.8 适用于极小目标）
+    """
+    # 拆解坐标
+    b1_x1, b1_y1, b1_x2, b1_y2 = box1.chunk(4, -1)
+    b2_x1, b2_y1, b2_x2, b2_y2 = box2.chunk(4, -1)
+
+    # 计算中心点与宽高
+    b1_cx, b1_cy = (b1_x1 + b1_x2) / 2, (b1_y1 + b1_y2) / 2
+    b1_w, b1_h = b1_x2 - b1_x1, b1_y2 - b1_y1
+
+    b2_cx, b2_cy = (b2_x1 + b2_x2) / 2, (b2_y1 + b2_y2) / 2
+    b2_w, b2_h = b2_x2 - b2_x1, b2_y2 - b2_y1
+
+    # 1. 中心点欧氏距离 (Center Distance)
+    center_dist = (b1_cx - b2_cx) ** 2 + (b1_cy - b2_cy) ** 2
+
+    # 2. 协方差(尺寸)距离 (Size Distance)
+    size_dist = ((b1_w - b2_w) ** 2 + (b1_h - b2_h) ** 2) / 4.0
+
+    # 3. 计算 Wasserstein-2 距离 (W2^2)
+    w2 = center_dist + size_dist
+
+    # 4. 归一化为 NWD (范围 0~1，1表示完美重合)
+    nwd = torch.exp(-torch.sqrt(w2 + eps) / constant)
+
+    return nwd.squeeze(-1)
