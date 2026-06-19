@@ -49,6 +49,7 @@ from ultralytics.nn.modules import (
     DWConvTranspose2d,
     Focus,
     GhostBottleneck,
+    GhostC2f,
     GhostConv,
     HGBlock,
     HGStem,
@@ -64,6 +65,7 @@ from ultralytics.nn.modules import (
     ResNetLayer,
     RTDETRDecoder,
     SCDown,
+    SEAttention,
     Segment,
     Segment26,
     SemanticSegment,
@@ -73,8 +75,6 @@ from ultralytics.nn.modules import (
     YOLOESegment,
     YOLOESegment26,
     v10Detect,
-    GhostC2f,
-    SEAttention,
 )
 from ultralytics.utils import DEFAULT_CFG_DICT, LOGGER, SETTINGS, WINDOWS, YAML, colorstr, emojis
 from ultralytics.utils.checks import REMOTE_FILE_PREFIXES, check_file, check_requirements, check_suffix, check_yaml
@@ -1658,7 +1658,7 @@ def parse_model(d, ch, verbose=True):
     nc, act, scales, end2end = (d.get(x) for x in ("nc", "activation", "scales", "end2end"))
     reg_max = d.get("reg_max", 16)
     depth, width, kpt_shape = (d.get(x, 1.0) for x in ("depth_multiple", "width_multiple", "kpt_shape"))
-    #提取系数位置，代码会根据传入的字符，去yaml的scales字典里吧对应的列表提取出来（width,depth）
+    # 提取系数位置，代码会根据传入的字符，去yaml的scales字典里吧对应的列表提取出来（width,depth）
     scale = d.get("scale")
     if scales:
         if not scale:
@@ -1747,7 +1747,7 @@ def parse_model(d, ch, verbose=True):
             if isinstance(a, str):
                 with contextlib.suppress(ValueError):
                     args[j] = locals()[a] if a in locals() else ast.literal_eval(a)
-        #控制网络深度的代码
+        # 控制网络深度的代码
         n = n_ = max(round(n * depth), 1) if n > 1 else n  # depth gain
         if m in base_modules:
             c1, c2 = ch[f], args[0]
