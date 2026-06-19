@@ -2,7 +2,7 @@
 
 # git上传文件事项
 
-~~~bash
+```bash
 #去除仓库链接
 git remote remove origin
 
@@ -20,5 +20,4 @@ git commit -m "这是注释"
 
 #推送更新
 git push origin main
-~~~
-
+```

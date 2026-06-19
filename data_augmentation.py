@@ -1,8 +1,9 @@
-import os
-import cv2
-import random
 import glob
+import os
+import random
 from pathlib import Path
+
+import cv2
 import matplotlib.pyplot as plt
 
 # ==========================================
@@ -26,7 +27,7 @@ os.makedirs(OUTPUT_LBL_DIR, exist_ok=True)
 NUM_NEW_SAMPLES = 170
 
 # 碰撞拦截阈值与最大尝试次数
-IOU_THRESHOLD = 0.1 #if the actual IoU is bigger than the IOU_THREOLD,it will try again
+IOU_THRESHOLD = 0.1  # if the actual IoU is bigger than the IOU_THREOLD,it will try again
 MAX_ATTEMPTS = 50
 
 
@@ -34,7 +35,7 @@ MAX_ATTEMPTS = 50
 # 2. 底层算子
 # ==========================================
 def compute_iou(box1, box2):
-    """计算两个边界框的 IoU"""
+    """计算两个边界框的 IoU."""
     _, x1_min, y1_min, x1_max, y1_max = box1
     _, x2_min, y2_min, x2_max, y2_max = box2
 
@@ -51,19 +52,21 @@ def compute_iou(box1, box2):
     box2_area = (x2_max - x2_min) * (y2_max - y2_min)
 
     union_area = box1_area + box2_area - inter_area
-    if union_area == 0: return 0.0
+    if union_area == 0:
+        return 0.0
     return inter_area / union_area
 
 
 def load_yolo_label(label_path, img_w, img_h):
-    """读取 YOLO 标签并还原为绝对像素坐标"""
+    """读取 YOLO 标签并还原为绝对像素坐标."""
     boxes = []
     if not os.path.exists(label_path):
         return boxes
-    with open(label_path, "r") as f:
+    with open(label_path) as f:
         for line in f.readlines():
             parts = line.strip().split()
-            if len(parts) < 5: continue
+            if len(parts) < 5:
+                continue
             cls_id = int(parts[0])
             cx, cy, w, h = map(float, parts[1:5])
             """
@@ -87,7 +90,7 @@ def load_yolo_label(label_path, img_w, img_h):
 
 
 def create_yolo_txt(boxes, output_path, img_w, img_h):
-    """将绝对像素坐标保存为 YOLO 格式"""
+    """将绝对像素坐标保存为 YOLO 格式."""
     with open(output_path, "w") as f:
         for box in boxes:
             cls_id, xmin, ymin, xmax, ymax = box
@@ -102,7 +105,7 @@ def create_yolo_txt(boxes, output_path, img_w, img_h):
 
 # 【已回退至最稳妥的重型读取法】
 def extract_target_objects(image_paths):
-    """先读图获取真实宽高，再解算坐标，绝不漏掉任何目标"""
+    """先读图获取真实宽高，再解算坐标，绝不漏掉任何目标."""
     obj_patches = []
     print(f"正在启动重型全库扫描，提取类别 ID={TARGET_CLASS} 的特征矩阵...")
 
@@ -115,7 +118,8 @@ def extract_target_objects(image_paths):
 
         # 直接暴力读图获取真实物理尺寸
         img = cv2.imread(img_path)
-        if img is None: continue
+        if img is None:
+            continue
         h, w = img.shape[:2]
 
         boxes = load_yolo_label(lbl_path, w, h)
@@ -168,7 +172,8 @@ if __name__ == "__main__":
         bg_lbl_path = os.path.join(LABEL_DIR, f"{bg_img_name}.txt")
 
         bg_img = cv2.imread(bg_img_path)
-        if bg_img is None: continue
+        if bg_img is None:
+            continue
         bg_h, bg_w = bg_img.shape[:2]
 
         bg_boxes = load_yolo_label(bg_lbl_path, bg_w, bg_h)
@@ -209,9 +214,9 @@ if __name__ == "__main__":
 
         # 像素替换
         aug_img = bg_img.copy()
-        aug_img[paste_y:paste_y + new_h, paste_x:paste_x + new_w] = patch_resized
+        aug_img[paste_y : paste_y + new_h, paste_x : paste_x + new_w] = patch_resized
 
-        all_boxes = bg_boxes + [new_box]
+        all_boxes = [*bg_boxes, new_box]
 
         # 保存
         new_img_name = f"aug_cp_{TARGET_CLASS}_{success_count}_{bg_img_name}.jpg"
