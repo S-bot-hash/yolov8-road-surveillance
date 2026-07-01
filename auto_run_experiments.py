@@ -31,7 +31,7 @@ def run_experiments():
             print(f"✅ 实验 {exp_script} 成功完成！耗时: {elapsed_time:.2f} 小时。")
             success_list.append(exp_script)
 
-        except subprocess.CalledProcessError as e:
+        except subprocess.CalledProcessError:
             print(f"❌ 实验 {exp_script} 运行失败！跳过并准备执行下一个。")
             fail_list.append(exp_script)
         except FileNotFoundError:
