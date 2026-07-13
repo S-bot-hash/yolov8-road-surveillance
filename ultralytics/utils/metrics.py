@@ -172,9 +172,7 @@ def bbox_iou(
 
 
 def bbox_iou_inner(box1, box2, xywh=False, GIoU=False, DIoU=False, CIoU=False, eps=1e-7, inner_ratio=0.75):
-    """
-    专门为 Inner-IoU 编写的计算函数。
-    通过 inner_ratio 缩放边界框以聚焦内部区域。
+    """专门为 Inner-IoU 编写的计算函数。 通过 inner_ratio 缩放边界框以聚焦内部区域。.
     """
     # 1. 获取并解耦原始坐标
     if xywh:
@@ -186,13 +184,12 @@ def bbox_iou_inner(box1, box2, xywh=False, GIoU=False, DIoU=False, CIoU=False, e
         b1_x1, b1_y1, b1_x2, b1_y2 = box1.chunk(4, -1)
         b2_x1, b2_y1, b2_x2, b2_y2 = box2.chunk(4, -1)
 
-    is_tensor=isinstance(inner_ratio,torch.Tensor)
-
+    is_tensor = isinstance(inner_ratio, torch.Tensor)
 
     # 2. Inner 缩放逻辑
     if is_tensor or inner_ratio != 1.0:
         if is_tensor:
-            inner_ratio=inner_ratio.view(-1,1)
+            inner_ratio = inner_ratio.view(-1, 1)
         b1_w, b1_h = b1_x2 - b1_x1, b1_y2 - b1_y1
         b1_xc, b1_yc = b1_x1 + b1_w / 2, b1_y1 + b1_h / 2
 
@@ -227,9 +224,7 @@ def bbox_iou_inner(box1, box2, xywh=False, GIoU=False, DIoU=False, CIoU=False, e
         ch = b1_y2.maximum(b2_y2) - b1_y1.minimum(b2_y1)  # convex height
         if CIoU or DIoU:
             c2 = cw.pow(2) + ch.pow(2) + eps
-            rho2 = (
-                (b2_x1 + b2_x2 - b1_x1 - b1_x2).pow(2) + (b2_y1 + b2_y2 - b1_y1 - b1_y2).pow(2)
-            ) / 4
+            rho2 = ((b2_x1 + b2_x2 - b1_x1 - b1_x2).pow(2) + (b2_y1 + b2_y2 - b1_y1 - b1_y2).pow(2)) / 4
             if CIoU:
                 v = (4 / math.pi**2) * ((w2 / h2).atan() - (w1 / h1).atan()).pow(2)
                 with torch.no_grad():
@@ -1961,11 +1956,8 @@ class SemanticMetrics(SimpleClass, DataExportMixin):
 
 
 def bbox_nwd(box1, box2, eps=1e-7, constant=12.8):
-    """
-    计算两个边界框的 Normalized Wasserstein Distance (NWD)。
-    专为微小目标设计，替代 IoU。
-    box1, box2: 形状为 (..., 4) 的张量，格式为 (x1, y1, x2, y2)
-    constant: NWD 的平滑常数，通常设为数据集中目标平均尺寸的倍数（12.8 适用于极小目标）
+    """计算两个边界框的 Normalized Wasserstein Distance (NWD)。 专为微小目标设计，替代 IoU。 box1, box2: 形状为 (..., 4) 的张量，格式为 (x1, y1, x2,
+    y2) constant: NWD 的平滑常数，通常设为数据集中目标平均尺寸的倍数（12.8 适用于极小目标）.
     """
     # 拆解坐标
     b1_x1, b1_y1, b1_x2, b1_y2 = box1.chunk(4, -1)

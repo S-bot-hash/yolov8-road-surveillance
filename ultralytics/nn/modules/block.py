@@ -2072,58 +2072,58 @@ class RealNVP(nn.Module):
         z, log_det = self.backward_p(x)
         return self.prior.log_prob(z) + log_det
 
+
 class GhostC2f(nn.Module):
-    #更快的实现csp Bottleneck（两个卷积层和Ghostbottleneck）
-    def __init__(self,c1:int,c2:int,n:int = 1,shortcut: bool = False,g:int = 1,e:float = 0.5):
+    # 更快的实现csp Bottleneck（两个卷积层和Ghostbottleneck）
+    def __init__(self, c1: int, c2: int, n: int = 1, shortcut: bool = False, g: int = 1, e: float = 0.5):
         super().__init__()
-        self.c=int(c2*e);#隐藏层通道数
-        self.cv1=Conv(c1,2*self.c,1,1)
-        self.cv2=Conv((2+n)*self.c,c2,1)
+        self.c = int(c2 * e)  # 隐藏层通道数
+        self.cv1 = Conv(c1, 2 * self.c, 1, 1)
+        self.cv2 = Conv((2 + n) * self.c, c2, 1)
 
-        #将原版的bottleneck换成ghostbottleneck
-        self.m=nn.ModuleList(GhostBottleneck(self.c,self.c,k=3,s=1) for _ in range(n))
+        # 将原版的bottleneck换成ghostbottleneck
+        self.m = nn.ModuleList(GhostBottleneck(self.c, self.c, k=3, s=1) for _ in range(n))
 
-    def forward(self,x:torch.Tensor)-> torch.Tensor:
-        """Forward pass through the GhostC2f"""
-        y=list(self.cv1(x).chunk(2,1))
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass through the GhostC2f."""
+        y = list(self.cv1(x).chunk(2, 1))
         y.extend(m(y[-1]) for m in self.m)
-        return self.cv2(torch.cat(y,1))
+        return self.cv2(torch.cat(y, 1))
 
-    def forward_split(self,x:torch.Tensor)->torch.Tensor:
+    def forward_split(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass using split() instead of split()."""
-        y=self.cv1(x).split((self.c,self.c),1)
-        y=[y[0],y[1]]
+        y = self.cv1(x).split((self.c, self.c), 1)
+        y = [y[0], y[1]]
         y.extend(m(y[-1]) for m in self.m)
-        return self.cv2(torch.cat(y,1))
+        return self.cv2(torch.cat(y, 1))
 
-#class GhostC2f_Full(nn.mudule):
+
+# class GhostC2f_Full(nn.mudule):
+
 
 class SEAttention(nn.Module):
-    """Squeeze-and-Excitation Attention Module"""
+    """Squeeze-and-Excitation Attention Module."""
 
-    def __init__(self,c1,c2=None,r=16):
-        """
-        Initialize SE Module.
+    def __init__(self, c1, c2=None, r=16):
+        """Initialize SE Module.
+
         Args:
-            c1(int):input channels
-            c2(int):output channels
-            r(int) :reduction ratio
+            c1(int): input channels
+            c2(int): output channels
+            r(int): reduction ratio.
         """
         super().__init__()
-        #squeeze the space to 1×1
-        self.squeeze=nn.AdaptiveAvgPool2d(1)
+        # squeeze the space to 1×1
+        self.squeeze = nn.AdaptiveAvgPool2d(1)
 
-        #Excitation: channel dimension reduction and then increase,
-        #improve channel correlation
+        # Excitation: channel dimension reduction and then increase,
+        # improve channel correlation
 
-        c_=max(1,c1//r)
-        self.excitation=nn.Sequential(
-            nn.Conv2d(c1,c_,1,bias=False),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(c_,c1,1,bias=False),
-            nn.Sigmoid()
+        c_ = max(1, c1 // r)
+        self.excitation = nn.Sequential(
+            nn.Conv2d(c1, c_, 1, bias=False), nn.ReLU(inplace=True), nn.Conv2d(c_, c1, 1, bias=False), nn.Sigmoid()
         )
-    def forward(self,x:torch.Tensor)-> torch.Tensor:
-        """Apply Squeeze-and-Excitation to input tensor"""
-        return x*self.excitation(self.squeeze(x))
 
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply Squeeze-and-Excitation to input tensor."""
+        return x * self.excitation(self.squeeze(x))
