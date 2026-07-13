@@ -5,14 +5,7 @@ from collections import defaultdict
 labels_dir = "./data/train/labels"
 
 # 你的类别名称映射 (请确保与你的 classes.txt 或 yaml 对应)
-class_names = {
-    0: "Bus",
-    1: "Car",
-    2: "Motorbike",
-    3: "Pickup",
-    4: "Truck",
-    5: "Van"
-}
+class_names = {0: "Bus", 1: "Car", 2: "Motorbike", 3: "Pickup", 4: "Truck", 5: "Van"}
 
 instances_count = defaultdict(int)
 images_with_class = defaultdict(set)
@@ -24,7 +17,7 @@ for filename in os.listdir(labels_dir):
         continue
 
     filepath = os.path.join(labels_dir, filename)
-    with open(filepath, "r") as f:
+    with open(filepath) as f:
         for line in f.readlines():
             parts = line.strip().split()
             if not parts:
