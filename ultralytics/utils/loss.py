@@ -15,7 +15,7 @@ from ultralytics.utils.ops import crop_mask, xywh2xyxy, xyxy2xywh
 from ultralytics.utils.tal import RotatedTaskAlignedAssigner, TaskAlignedAssigner, dist2bbox, dist2rbox, make_anchors
 from ultralytics.utils.torch_utils import autocast
 
-from .metrics import bbox_iou, probiou,bbox_nwd,bbox_iou_inner
+from .metrics import bbox_iou, bbox_iou_inner, probiou
 from .tal import bbox2dist, rbox2dist
 
 
@@ -132,8 +132,6 @@ class BboxLoss(nn.Module):
         iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
         loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
 
-
-
         # DFL loss
         if self.dfl_loss:
             target_ltrb = bbox2dist(anchor_points, target_bboxes, self.dfl_loss.reg_max - 1)
@@ -165,16 +163,16 @@ class InnerBboxLoss(nn.Module):
         self.dfl_loss = DFLoss(reg_max) if reg_max > 1 else None
 
     def forward(
-            self,
-            pred_dist: torch.Tensor,
-            pred_bboxes: torch.Tensor,
-            anchor_points: torch.Tensor,
-            target_bboxes: torch.Tensor,
-            target_scores: torch.Tensor,
-            target_scores_sum: torch.Tensor,
-            fg_mask: torch.Tensor,
-            imgsz: torch.Tensor,
-            stride: torch.Tensor,
+        self,
+        pred_dist: torch.Tensor,
+        pred_bboxes: torch.Tensor,
+        anchor_points: torch.Tensor,
+        target_bboxes: torch.Tensor,
+        target_scores: torch.Tensor,
+        target_scores_sum: torch.Tensor,
+        fg_mask: torch.Tensor,
+        imgsz: torch.Tensor,
+        stride: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Compute Geometry-Aware Inner-IoU and DFL losses for bounding boxes."""
         weight = target_scores.sum(-1)[fg_mask].unsqueeze(-1)
@@ -201,8 +199,9 @@ class InnerBboxLoss(nn.Module):
         # ================================================================
 
         # 将计算出的自适应张量 inner_ratios 传入底层的 bbox_iou_inner
-        iou = bbox_iou_inner(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True,
-                             inner_ratio=inner_ratios)
+        iou = bbox_iou_inner(
+            pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True, inner_ratio=inner_ratios
+        )
         loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
 
         # DFL loss (保持原样)
@@ -219,12 +218,12 @@ class InnerBboxLoss(nn.Module):
             pred_dist[..., 0::2] /= imgsz[1]
             pred_dist[..., 1::2] /= imgsz[0]
             loss_dfl = (
-                    F.l1_loss(pred_dist[fg_mask], target_ltrb[fg_mask], reduction="none").mean(-1,
-                                                                                               keepdim=True) * weight
+                F.l1_loss(pred_dist[fg_mask], target_ltrb[fg_mask], reduction="none").mean(-1, keepdim=True) * weight
             )
             loss_dfl = loss_dfl.sum() / target_scores_sum
 
         return loss_iou, loss_dfl
+
 
 class RLELoss(nn.Module):
     """Residual Log-Likelihood Estimation Loss.
